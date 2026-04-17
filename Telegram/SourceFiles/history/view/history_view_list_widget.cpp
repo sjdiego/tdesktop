@@ -704,6 +704,9 @@ void ListWidget::refreshRows(const Data::MessagesSlice &old) {
 			_itemRevealPending.emplace(*i);
 		}
 	}
+	if ((nearestIndex < 0) && !_items.empty()) {
+		nearestIndex = findNearestItem(_aroundPosition);
+	}
 	updateAroundPositionFromNearest(nearestIndex);
 
 	updateItemsGeometry();

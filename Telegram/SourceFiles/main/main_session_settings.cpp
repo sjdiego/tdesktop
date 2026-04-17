@@ -837,12 +837,14 @@ void SessionSettings::addFromSerialized(const QByteArray &serialized) {
 
 void SessionSettings::addShadowBanned(PeerId peerId) {
 	if (_shadowBannedUsers.emplace(peerId).second) {
+		++_shadowBannedVersion;
 		_shadowBannedChanges.fire_copy(peerId);
 	}
 }
 
 void SessionSettings::removeShadowBanned(PeerId peerId) {
 	if (_shadowBannedUsers.remove(peerId)) {
+		++_shadowBannedVersion;
 		_shadowBannedChanges.fire_copy(peerId);
 	}
 }

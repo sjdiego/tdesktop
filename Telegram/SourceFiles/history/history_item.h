@@ -617,6 +617,22 @@ public:
 	}
 
 	[[nodiscard]] QString fromRank() const;
+	void invalidateShadowbanCache() const {
+		_shadowbanCacheVersion = 0;
+	}
+	[[nodiscard]] bool lookupShadowbanCache(
+		uint32 version,
+		bool &value) const {
+		if (_shadowbanCacheVersion != version) {
+			return false;
+		}
+		value = _shadowbanCacheHidden;
+		return true;
+	}
+	void cacheShadowbanHidden(uint32 version, bool hidden) const {
+		_shadowbanCacheVersion = version;
+		_shadowbanCacheHidden = hidden;
+	}
 
 	MsgId id;
 
@@ -756,6 +772,8 @@ private:
 	MessageGroupId _groupId = MessageGroupId();
 	EffectId _effectId = 0;
 	HistoryView::Element *_mainView = nullptr;
+	mutable uint32 _shadowbanCacheVersion = 0;
+	mutable bool _shadowbanCacheHidden = false;
 
 	friend class HistoryView::Element;
 	friend class HistoryView::Message;

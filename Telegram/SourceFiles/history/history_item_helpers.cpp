@@ -764,29 +764,37 @@ bool ShouldHideByShadowban(not_null<const HistoryItem*> item) {
 		return false;
 	}
 	const auto &session = history->session();
-	if (!session.settings().shadowBannedCount()) {
+	const auto version = session.settings().shadowBannedVersion();
+	auto cached = false;
+	if (item->lookupShadowbanCache(version, cached)) {
+		return cached;
+	} else if (!session.settings().shadowBannedCount()) {
+		item->cacheShadowbanHidden(version, false);
 		return false;
 	}
-	if (IsShadowBannedPeer(&session, item->from())
+	const auto hidden = IsShadowBannedPeer(&session, item->from())
 		|| IsShadowBannedPeer(&session, item->originalSender())
-		|| IsShadowBannedPeer(&session, item->savedFromSender())) {
-		return true;
-	}
-	if (const auto reply = item->Get<HistoryMessageReply>()) {
-		auto replied = reply->resolvedMessage.get();
-		if (!replied && reply->messageId()) {
-			const auto replyPeerId = reply->externalPeerId()
-				? reply->externalPeerId()
-				: peer->id;
-			replied = history->owner().message(replyPeerId, reply->messageId());
-		}
-		if (replied && ShouldHideByShadowban(replied)) {
-			return true;
-		}
-	}
-	return ranges::any_of(item->originalText().entities, [&](const auto &entity) {
-		return HasShadowBannedMention(item, entity);
-	});
+		|| IsShadowBannedPeer(&session, item->savedFromSender())
+		|| [&] {
+			if (const auto reply = item->Get<HistoryMessageReply>()) {
+				auto replied = reply->resolvedMessage.get();
+				if (!replied && reply->messageId()) {
+					const auto replyPeerId = reply->externalPeerId()
+						? reply->externalPeerId()
+						: peer->id;
+					replied = history->owner().message(
+						replyPeerId,
+						reply->messageId());
+				}
+				return replied && ShouldHideByShadowban(replied);
+			}
+			return false;
+		}()
+		|| ranges::any_of(item->originalText().entities, [&](const auto &entity) {
+			return HasShadowBannedMention(item, entity);
+		});
+	item->cacheShadowbanHidden(version, hidden);
+	return hidden;
 }
 
 ClickHandlerPtr JumpToMessageClickHandler(

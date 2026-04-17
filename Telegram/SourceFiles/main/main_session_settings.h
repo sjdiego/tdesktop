@@ -103,6 +103,9 @@ public:
 	[[nodiscard]] int shadowBannedCount() const {
 		return _shadowBannedUsers.size();
 	}
+	[[nodiscard]] uint32 shadowBannedVersion() const {
+		return _shadowBannedVersion;
+	}
 	[[nodiscard]] rpl::producer<PeerId> shadowBannedChanges() const {
 		return _shadowBannedChanges.events();
 	}
@@ -263,6 +266,7 @@ private:
 
 	bool _phoneNumberHidden = false;
 
+	uint32 _shadowBannedVersion = 1;
 	rpl::event_stream<PeerId> _shadowBannedChanges;
 
 };
