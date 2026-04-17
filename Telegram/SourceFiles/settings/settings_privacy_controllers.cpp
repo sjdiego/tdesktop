@@ -197,6 +197,7 @@ Main::Session &ShadowbanPeerBoxController::session() const {
 }
 
 void ShadowbanPeerBoxController::prepareViewHook() {
+	setSearchNoResultsText(tr::lng_shadowban_list_not_found(tr::now));
 	delegate()->peerListSetTitle(tr::lng_shadowban_list_add_title());
 }
 

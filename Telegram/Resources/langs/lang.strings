@@ -1277,7 +1277,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_settings_blocked_users" = "Blocked users";
 "lng_settings_no_blocked_users" = "None";
 "lng_settings_shadowban" = "Shadowban";
-"lng_settings_no_shadowban_users" = "None";
 "lng_settings_show_sessions" = "Active sessions";
 "lng_settings_export_data" = "Export Telegram data";
 "lng_settings_destroy_if" = "If away for...";
@@ -1412,7 +1411,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_shadowban_list_empty_description" = "You haven't shadowbanned anyone yet.";
 "lng_shadowban_list_subtitle#one" = "{count} shadowbanned user";
 "lng_shadowban_list_subtitle#other" = "{count} shadowbanned users";
-"lng_shadowban_list_already_added" = "already in shadowban";
+"lng_shadowban_list_already_added" = "already in shadowban list";
 
 "lng_edit_privacy_everyone" = "Everybody";
 "lng_edit_privacy_no_miniapps" = "Not Mini Apps";
