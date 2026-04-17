@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/object_ptr.h"
 
 class History;
+class HistoryItem;
 
 namespace style {
 struct FlatLabel;
@@ -230,6 +231,7 @@ private:
 	bool isUntilOnline);
 [[nodiscard]] bool IsItemScheduledUntilOnline(
 	not_null<const HistoryItem*> item);
+[[nodiscard]] bool ShouldHideByShadowban(not_null<const HistoryItem*> item);
 
 [[nodiscard]] ClickHandlerPtr JumpToMessageClickHandler(
 	not_null<PeerData*> peer,

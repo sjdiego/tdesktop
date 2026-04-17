@@ -2082,6 +2082,7 @@ rpl::producer<not_null<const HistoryItem*>> Session::itemViewRefreshRequest() co
 }
 
 void Session::notifyItemDataChange(not_null<HistoryItem*> item) {
+	item->invalidateShadowbanCache();
 	_itemDataChanges.fire_copy(item);
 }
 
@@ -2090,6 +2091,7 @@ rpl::producer<not_null<HistoryItem*>> Session::itemDataChanges() const {
 }
 
 void Session::requestItemTextRefresh(not_null<HistoryItem*> item) {
+	item->invalidateShadowbanCache();
 	const auto call = [&](not_null<HistoryItem*> item) {
 		enumerateItemViews(item, [&](not_null<ViewElement*> view) {
 			view->itemTextUpdated();

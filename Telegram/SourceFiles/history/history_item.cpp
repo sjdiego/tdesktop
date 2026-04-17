@@ -4119,6 +4119,9 @@ const HiddenSenderInfo *HistoryItem::savedFromHiddenSenderInfo() const {
 
 TextWithEntities HistoryItem::notificationText(
 		NotificationTextOptions options) const {
+	if (ShouldHideByShadowban(this)) {
+		return {};
+	}
 	auto result = [&] {
 		if (_media && !isService()) {
 			return _media->notificationText();
@@ -4141,6 +4144,9 @@ TextWithEntities HistoryItem::notificationText(
 }
 
 ItemPreview HistoryItem::toPreview(ToPreviewOptions options) const {
+	if (ShouldHideByShadowban(this)) {
+		return {};
+	}
 	if (isService()) {
 		const_cast<HistoryItem*>(this)->resolveDependent();
 

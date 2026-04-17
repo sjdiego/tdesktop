@@ -67,6 +67,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "iv/iv_instance.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
+#include "main/main_session_settings.h"
 #include "menu/menu_mute.h"
 #include "settings/settings_common.h"
 #include "support/support_helper.h"
@@ -1285,6 +1286,7 @@ private:
 	void addFastButtonsMode(not_null<UserData*> user);
 	void addReportAction();
 	void addBlockAction(not_null<UserData*> user);
+	void addShadowbanAction(not_null<UserData*> user);
 	void addLeaveChannelAction(not_null<ChannelData*> channel);
 	void addJoinChannelAction(not_null<ChannelData*> channel);
 	void fillUserActions(not_null<UserData*> user);
@@ -2791,6 +2793,30 @@ void ActionsFiller::addBlockAction(not_null<UserData*> user) {
 		st::infoBlockButton);
 }
 
+void ActionsFiller::addShadowbanAction(not_null<UserData*> user) {
+	auto text = rpl::single(user->id) | rpl::then(
+		user->session().settings().shadowBannedChanges()
+	) | rpl::filter([=](PeerId peerId) {
+		return peerId == user->id;
+	}) | rpl::map([=](PeerId) {
+		return user->session().settings().isShadowBanned(user->id)
+			? tr::lng_shadowban_list_remove(tr::now)
+			: tr::lng_shadowban_list_add(tr::now);
+	}) | rpl::start_spawning(_wrap->lifetime());
+	AddActionButton(
+		_wrap,
+		rpl::duplicate(text),
+		rpl::duplicate(text) | rpl::map([](const QString &text) {
+			return !text.isEmpty();
+		}),
+		[=] {
+			user->session().settings().toggleShadowBanned(user->id);
+			user->session().saveSettingsDelayed();
+		},
+		&st::infoIconBlock,
+		st::infoBlockButton);
+}
+
 void ActionsFiller::addLeaveChannelAction(not_null<ChannelData*> channel) {
 	Expects(_controller->parentController());
 
@@ -2850,6 +2876,7 @@ void ActionsFiller::fillUserActions(not_null<UserData*> user) {
 			addReportAction();
 		}
 		addBlockAction(user);
+		addShadowbanAction(user);
 	}
 }
 

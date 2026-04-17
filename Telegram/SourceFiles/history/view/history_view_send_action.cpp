@@ -12,6 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_forum_topic.h"
 #include "data/data_session.h"
 #include "main/main_session.h"
+#include "main/main_session_settings.h"
 #include "history/history.h"
 #include "lang/lang_instance.h" // Instance::supportChoosingStickerReplacement
 #include "lang/lang_keys.h"
@@ -38,6 +39,12 @@ constexpr auto kStatusShowClientsideChooseSticker = 6 * crl::time(1000);
 constexpr auto kStatusShowClientsidePlayGame = 10 * crl::time(1000);
 constexpr auto kStatusShowClientsideSpeaking = 6 * crl::time(1000);
 
+[[nodiscard]] bool IsShadowBanned(
+		not_null<History*> history,
+		not_null<UserData*> user) {
+	return history->session().settings().isShadowBanned(user->id);
+}
+
 } // namespace
 
 SendActionPainter::SendActionPainter(
@@ -58,6 +65,10 @@ bool SendActionPainter::updateNeedsAnimating(
 		not_null<UserData*> user,
 		const MTPSendMessageAction &action) {
 	using Type = Api::SendProgressType;
+	if (IsShadowBanned(_history, user)) {
+		clear(user);
+		return false;
+	}
 	if (action.type() == mtpc_sendMessageCancelAction) {
 		clear(user);
 		return false;
@@ -209,7 +220,7 @@ bool SendActionPainter::updateNeedsAnimating(crl::time now, bool force) {
 	auto sendActionChanged = false;
 	auto speakingChanged = false;
 	for (auto i = begin(_typing); i != end(_typing);) {
-		if (now >= i->second) {
+		if ((now >= i->second) || IsShadowBanned(_history, i->first)) {
 			i = _typing.erase(i);
 			sendActionChanged = true;
 		} else {
@@ -217,7 +228,7 @@ bool SendActionPainter::updateNeedsAnimating(crl::time now, bool force) {
 		}
 	}
 	for (auto i = begin(_speaking); i != end(_speaking);) {
-		if (now >= i->second) {
+		if ((now >= i->second) || IsShadowBanned(_history, i->first)) {
 			i = _speaking.erase(i);
 			speakingChanged = true;
 		} else {
@@ -225,7 +236,7 @@ bool SendActionPainter::updateNeedsAnimating(crl::time now, bool force) {
 		}
 	}
 	for (auto i = begin(_sendActions); i != end(_sendActions);) {
-		if (now >= i->second.until) {
+		if ((now >= i->second.until) || IsShadowBanned(_history, i->first)) {
 			i = _sendActions.erase(i);
 			sendActionChanged = true;
 		} else {

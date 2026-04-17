@@ -127,6 +127,7 @@ public:
 
 	int marginTop() const override;
 	int marginBottom() const override;
+	bool isHidden() const override;
 	void draw(Painter &p, const PaintContext &context) const override;
 	PointState pointState(QPoint point) const override;
 	TextState textState(

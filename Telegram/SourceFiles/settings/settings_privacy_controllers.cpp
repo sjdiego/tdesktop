@@ -34,12 +34,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/view/history_view_message.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
+#include "main/main_session_settings.h"
 #include "settings/sections/settings_premium.h"
 #include "settings/sections/settings_privacy_security.h"
 #include "ui/boxes/confirm_box.h"
 #include "ui/chat/chat_style.h"
 #include "ui/chat/chat_theme.h"
 #include "ui/painter.h"
+#include "ui/ui_utility.h"
 #include "ui/vertical_list.h"
 #include "ui/text/format_values.h" // Ui::FormatPhone
 #include "ui/text/text_utilities.h"
@@ -153,6 +155,100 @@ auto BlockPeerBoxController::createRow(not_null<History*> history)
 	auto row = std::make_unique<Row>(history);
 	updateIsBlocked(row.get(), peer);
 	return row;
+}
+
+class ShadowbanPeerBoxController final : public ChatsListBoxController {
+public:
+	explicit ShadowbanPeerBoxController(not_null<Main::Session*> session);
+
+	Main::Session &session() const override;
+	void rowClicked(not_null<PeerListRow*> row) override;
+
+	void setAddCallback(Fn<void(not_null<PeerData*> peer)> callback) {
+		_addCallback = std::move(callback);
+	}
+
+protected:
+	void prepareViewHook() override;
+	std::unique_ptr<Row> createRow(not_null<History*> history) override;
+	void updateRowHook(not_null<Row*> row) override {
+		updateIsShadowBanned(row, row->peer());
+		delegate()->peerListUpdateRow(row);
+	}
+
+private:
+	void updateIsShadowBanned(
+		not_null<PeerListRow*> row,
+		PeerData *peer) const;
+
+	const not_null<Main::Session*> _session;
+	Fn<void(not_null<PeerData*> peer)> _addCallback;
+
+};
+
+ShadowbanPeerBoxController::ShadowbanPeerBoxController(
+	not_null<Main::Session*> session)
+: ChatsListBoxController(session)
+, _session(session) {
+}
+
+Main::Session &ShadowbanPeerBoxController::session() const {
+	return *_session;
+}
+
+void ShadowbanPeerBoxController::prepareViewHook() {
+	setSearchNoResultsText(tr::lng_shadowban_list_not_found(tr::now));
+	delegate()->peerListSetTitle(tr::lng_shadowban_list_add_title());
+}
+
+void ShadowbanPeerBoxController::updateIsShadowBanned(
+		not_null<PeerListRow*> row,
+		PeerData *peer) const {
+	if (!peer) {
+		return;
+	}
+	const auto shadowBanned = session().settings().isShadowBanned(peer->id);
+	row->setDisabledState(shadowBanned
+		? PeerListRow::State::DisabledChecked
+		: PeerListRow::State::Active);
+	if (shadowBanned) {
+		row->setCustomStatus(tr::lng_shadowban_list_already_added(tr::now));
+	} else {
+		row->clearCustomStatus();
+	}
+}
+
+void ShadowbanPeerBoxController::rowClicked(not_null<PeerListRow*> row) {
+	_addCallback(row->peer());
+}
+
+auto ShadowbanPeerBoxController::createRow(not_null<History*> history)
+-> std::unique_ptr<ShadowbanPeerBoxController::Row> {
+	const auto peer = history->peer;
+	if (!peer->isUser()
+		|| peer->isServiceUser()
+		|| peer->isSelf()
+		|| peer->isRepliesChat()
+		|| peer->isVerifyCodes()) {
+		return nullptr;
+	}
+	auto row = std::make_unique<Row>(history);
+	updateIsShadowBanned(row.get(), peer);
+	return row;
+}
+
+[[nodiscard]] QString ShadowbanStatusText(not_null<PeerData*> peer) {
+	const auto user = peer->asUser();
+	if (!user) {
+		return tr::lng_group_status(tr::now);
+	} else if (!user->phone().isEmpty()) {
+		return Ui::FormatPhone(user->phone());
+	} else if (!user->username().isEmpty()) {
+		return '@' + user->username();
+	} else if (user->isBot()) {
+		return tr::lng_status_bot(tr::now);
+	}
+	return tr::lng_blocked_list_unknown_phone(tr::now);
 }
 
 AdminLog::OwnedItem GenerateForwardedItem(
@@ -479,6 +575,111 @@ std::unique_ptr<PeerListRow> BlockedBoxController::createRow(
 }
 
 rpl::producer<int> BlockedBoxController::rowsCountChanges() const {
+	return _rowsCountChanges.events();
+}
+
+ShadowbanListController::ShadowbanListController(
+	not_null<Window::SessionController*> window)
+: _window(window) {
+}
+
+Main::Session &ShadowbanListController::session() const {
+	return _window->session();
+}
+
+void ShadowbanListController::prepare() {
+	delegate()->peerListSetTitle(tr::lng_shadowban_list_title());
+	setDescriptionText(tr::lng_shadowban_list_about(tr::now));
+	for (const auto &peerId : session().settings().shadowBannedUsers()) {
+		if (const auto peer = session().data().peerLoaded(peerId)) {
+			appendRow(peer);
+		}
+	}
+	delegate()->peerListRefreshRows();
+
+	session().settings().shadowBannedChanges(
+	) | rpl::on_next([=](PeerId peerId) {
+		handleShadowbanChange(peerId);
+	}, lifetime());
+}
+
+void ShadowbanListController::rowClicked(not_null<PeerListRow*> row) {
+	const auto peer = row->peer();
+	const auto window = _window;
+	crl::on_main(window, [=] {
+		window->showPeerHistory(peer);
+	});
+}
+
+void ShadowbanListController::rowRightActionClicked(
+		not_null<PeerListRow*> row) {
+	session().settings().removeShadowBanned(row->peer()->id);
+	session().saveSettingsDelayed();
+}
+
+void ShadowbanListController::AddNewPeer(
+		not_null<Window::SessionController*> window) {
+	auto controller = std::make_unique<ShadowbanPeerBoxController>(
+		&window->session());
+	auto initBox = [=, controller = controller.get()](
+			not_null<PeerListBox*> box) {
+		controller->setAddCallback([=](not_null<PeerData*> peer) {
+			const auto peerId = peer->id;
+			const auto session = &window->session();
+			box->closeBox();
+			Ui::PostponeCall(session, [=] {
+				session->settings().addShadowBanned(peerId);
+				session->saveSettingsDelayed();
+			});
+		});
+		box->addButton(tr::lng_cancel(), [box] { box->closeBox(); });
+	};
+	window->show(
+		Box<PeerListBox>(std::move(controller), std::move(initBox)));
+}
+
+void ShadowbanListController::handleShadowbanChange(PeerId peerId) {
+	if (session().settings().isShadowBanned(peerId)) {
+		if (const auto peer = session().data().peerLoaded(peerId)) {
+			if (prependRow(peer)) {
+				delegate()->peerListRefreshRows();
+				delegate()->peerListScrollToTop();
+			}
+		}
+	} else if (auto row = delegate()->peerListFindRow(peerId.value)) {
+		delegate()->peerListRemoveRow(row);
+		delegate()->peerListRefreshRows();
+		_rowsCountChanges.fire(delegate()->peerListFullRowsCount());
+	}
+}
+
+bool ShadowbanListController::appendRow(not_null<PeerData*> peer) {
+	if (delegate()->peerListFindRow(peer->id.value)) {
+		return false;
+	}
+	delegate()->peerListAppendRow(createRow(peer));
+	_rowsCountChanges.fire(delegate()->peerListFullRowsCount());
+	return true;
+}
+
+bool ShadowbanListController::prependRow(not_null<PeerData*> peer) {
+	if (delegate()->peerListFindRow(peer->id.value)) {
+		return false;
+	}
+	delegate()->peerListPrependRow(createRow(peer));
+	_rowsCountChanges.fire(delegate()->peerListFullRowsCount());
+	return true;
+}
+
+std::unique_ptr<PeerListRow> ShadowbanListController::createRow(
+		not_null<PeerData*> peer) const {
+	auto row = std::make_unique<PeerListRowWithLink>(peer);
+	row->setActionLink(tr::lng_shadowban_list_remove(tr::now));
+	row->setCustomStatus(ShadowbanStatusText(peer));
+	return row;
+}
+
+rpl::producer<int> ShadowbanListController::rowsCountChanges() const {
 	return _rowsCountChanges.events();
 }
 

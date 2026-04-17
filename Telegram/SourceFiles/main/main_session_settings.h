@@ -91,6 +91,25 @@ public:
 		_groupEmojiSectionHidden.remove(peerId);
 	}
 
+	void addShadowBanned(PeerId peerId);
+	void removeShadowBanned(PeerId peerId);
+	void toggleShadowBanned(PeerId peerId);
+	[[nodiscard]] bool isShadowBanned(PeerId peerId) const {
+		return _shadowBannedUsers.contains(peerId);
+	}
+	[[nodiscard]] const base::flat_set<PeerId> &shadowBannedUsers() const {
+		return _shadowBannedUsers;
+	}
+	[[nodiscard]] int shadowBannedCount() const {
+		return _shadowBannedUsers.size();
+	}
+	[[nodiscard]] uint32 shadowBannedVersion() const {
+		return _shadowBannedVersion;
+	}
+	[[nodiscard]] rpl::producer<PeerId> shadowBannedChanges() const {
+		return _shadowBannedChanges.events();
+	}
+
 	[[nodiscard]] Data::AutoDownload::Full &autoDownload() {
 		return _autoDownload;
 	}
@@ -212,6 +231,7 @@ private:
 	ChatHelpers::SelectorTab _selectorTab; // per-window
 	base::flat_set<PeerId> _groupStickersSectionHidden;
 	base::flat_set<PeerId> _groupEmojiSectionHidden;
+	base::flat_set<PeerId> _shadowBannedUsers;
 	bool _hadLegacyCallsPeerToPeerNobody = false;
 	Data::AutoDownload::Full _autoDownload;
 	rpl::variable<bool> _archiveCollapsed = false;
@@ -245,6 +265,9 @@ private:
 	std::vector<int32> _moderateCommonGroups;
 
 	bool _phoneNumberHidden = false;
+
+	uint32 _shadowBannedVersion = 1;
+	rpl::event_stream<PeerId> _shadowBannedChanges;
 
 };
 

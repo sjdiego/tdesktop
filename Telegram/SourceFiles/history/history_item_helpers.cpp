@@ -65,6 +65,48 @@ bool PeerCallKnown(not_null<PeerData*> peer) {
 	return true;
 }
 
+[[nodiscard]] bool IsShadowBannedPeer(
+		not_null<const Main::Session*> session,
+		const PeerData *peer) {
+	return peer
+		&& peer->isUser()
+		&& session->settings().isShadowBanned(peer->id);
+}
+
+[[nodiscard]] bool HasShadowBannedMention(
+		not_null<const HistoryItem*> item,
+		const EntityInText &entity) {
+	const auto &text = item->originalText().text;
+	const auto &session = item->history()->session();
+	switch (entity.type()) {
+	case EntityType::MentionName: {
+		const auto fields = TextUtilities::MentionNameDataToFields(
+			entity.data());
+		return fields.userId
+			&& session.settings().isShadowBanned(
+				peerFromUser(UserId(fields.userId)));
+	}
+	case EntityType::Mention: {
+		const auto offset = entity.offset();
+		const auto length = entity.length();
+		if ((offset < 0)
+			|| (length <= 1)
+			|| (offset + length > text.size())) {
+			return false;
+		}
+		const auto mention = text.mid(offset, length);
+		if (!mention.startsWith('@')) {
+			return false;
+		}
+		const auto resolved = session.data().peerByUsername(mention.mid(1));
+		return resolved
+			&& resolved->isUser()
+			&& session.settings().isShadowBanned(resolved->id);
+	}
+	default: return false;
+	}
+}
+
 } // namespace
 
 int ComputeSendingMessagesCount(
@@ -713,6 +755,46 @@ QString ItemDateText(not_null<const HistoryItem*> item, bool isUntilOnline) {
 bool IsItemScheduledUntilOnline(not_null<const HistoryItem*> item) {
 	return item->isScheduled()
 		&& (item->date() == Api::kScheduledUntilOnlineTimestamp);
+}
+
+bool ShouldHideByShadowban(not_null<const HistoryItem*> item) {
+	const auto history = item->history();
+	const auto peer = history->peer;
+	if (!peer->isChat() && !peer->isMegagroup()) {
+		return false;
+	}
+	const auto &session = history->session();
+	const auto version = session.settings().shadowBannedVersion();
+	auto cached = false;
+	if (item->lookupShadowbanCache(version, cached)) {
+		return cached;
+	} else if (!session.settings().shadowBannedCount()) {
+		item->cacheShadowbanHidden(version, false);
+		return false;
+	}
+	const auto hidden = IsShadowBannedPeer(&session, item->from())
+		|| IsShadowBannedPeer(&session, item->originalSender())
+		|| IsShadowBannedPeer(&session, item->savedFromSender())
+		|| [&] {
+			if (const auto reply = item->Get<HistoryMessageReply>()) {
+				auto replied = reply->resolvedMessage.get();
+				if (!replied && reply->messageId()) {
+					const auto replyPeerId = reply->externalPeerId()
+						? reply->externalPeerId()
+						: peer->id;
+					replied = history->owner().message(
+						replyPeerId,
+						reply->messageId());
+				}
+				return replied && ShouldHideByShadowban(replied);
+			}
+			return false;
+		}()
+		|| ranges::any_of(item->originalText().entities, [&](const auto &entity) {
+			return HasShadowBannedMention(item, entity);
+		});
+	item->cacheShadowbanHidden(version, hidden);
+	return hidden;
 }
 
 ClickHandlerPtr JumpToMessageClickHandler(
