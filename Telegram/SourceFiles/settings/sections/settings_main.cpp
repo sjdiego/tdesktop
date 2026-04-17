@@ -57,6 +57,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "settings/settings_power_saving.h"
 #include "settings/sections/settings_premium.h"
 #include "settings/sections/settings_privacy_security.h"
+#include "settings/sections/settings_shadowban.h"
 #include "settings/settings_scale_preview.h"
 #include "storage/localstorage.h"
 #include "ui/basic_click_handlers.h"
@@ -386,6 +387,13 @@ void BuildSectionButtons(SectionBuilder &builder) {
 		.targetSection = PrivacySecurityId(),
 		.icon = { &st::menuIconLock },
 		.keywords = { u"security"_q, u"passcode"_q, u"password"_q, u"2fa"_q },
+	});
+
+	builder.addSectionButton({
+		.title = tr::lng_settings_shadowban(),
+		.targetSection = ShadowbanId(),
+		.icon = { &st::menuIconBlock },
+		.keywords = { u"shadowban"_q, u"hide"_q, u"ban"_q, u"groups"_q },
 	});
 
 	builder.addSectionButton({

@@ -59,6 +59,33 @@ private:
 
 };
 
+class ShadowbanListController final : public PeerListController {
+public:
+	explicit ShadowbanListController(
+		not_null<Window::SessionController*> window);
+
+	::Main::Session &session() const override;
+	void prepare() override;
+	void rowClicked(not_null<PeerListRow*> row) override;
+	void rowRightActionClicked(not_null<PeerListRow*> row) override;
+
+	[[nodiscard]] rpl::producer<int> rowsCountChanges() const;
+
+	static void AddNewPeer(not_null<Window::SessionController*> window);
+
+private:
+	void handleShadowbanChange(PeerId peerId);
+
+	bool appendRow(not_null<PeerData*> peer);
+	bool prependRow(not_null<PeerData*> peer);
+	std::unique_ptr<PeerListRow> createRow(not_null<PeerData*> peer) const;
+
+	const not_null<Window::SessionController*> _window;
+
+	rpl::event_stream<int> _rowsCountChanges;
+
+};
+
 class PhoneNumberPrivacyController final : public EditPrivacyController {
 public:
 	using Option = EditPrivacyBox::Option;

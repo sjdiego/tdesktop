@@ -313,6 +313,7 @@ private:
 	void addThemeEdit();
 	void addToggleNoForwards();
 	void addBlockUser();
+	void addShadowbanUser();
 	void addViewDiscussion();
 	void addDirectMessages();
 	void addToggleTopicClosed();
@@ -895,6 +896,36 @@ void Filler::addBlockUser() {
 	if (user->blockStatus() == UserData::BlockStatus::Unknown) {
 		user->session().api().requestFullPeer(user);
 	}
+}
+
+void Filler::addShadowbanUser() {
+	const auto user = _peer->asUser();
+	if (!user
+		|| user->isInaccessible()
+		|| user->isSelf()
+		|| user->isRepliesChat()
+		|| user->isVerifyCodes()) {
+		return;
+	}
+	const auto shadowAction = _addAction(
+		user->session().settings().isShadowBanned(user->id)
+			? tr::lng_shadowban_list_remove(tr::now)
+			: tr::lng_shadowban_list_add(tr::now),
+		[=] {
+			user->session().settings().toggleShadowBanned(user->id);
+			user->session().saveSettingsDelayed();
+		},
+		&st::menuIconBlock);
+	auto actionText = rpl::single(user->id) | rpl::then(
+		user->session().settings().shadowBannedChanges()
+	) | rpl::filter([=](PeerId peerId) {
+		return peerId == user->id;
+	}) | rpl::map([=](PeerId) {
+		return user->session().settings().isShadowBanned(user->id)
+			? tr::lng_shadowban_list_remove(tr::now)
+			: tr::lng_shadowban_list_add(tr::now);
+	});
+	SetActionText(shadowAction, std::move(actionText));
 }
 
 void Filler::addViewDiscussion() {
@@ -1746,6 +1777,7 @@ void Filler::fillContextMenuActions() {
 	addToggleTopicClosed();
 	addToggleFolder();
 	if (const auto user = _peer->asUser()) {
+		addShadowbanUser();
 		if (!user->isContact()) {
 			addBlockUser();
 		}
@@ -1800,6 +1832,7 @@ void Filler::fillProfileActions() {
 	addExportChat();
 	addToggleNoForwards();
 	addToggleFolder();
+	addShadowbanUser();
 	addBlockUser();
 	addReport();
 	addLeaveChat();
@@ -3999,6 +4032,22 @@ void FillSenderUserpicMenu(
 	addAction(showHistoryText, [=] {
 		controller->showPeerHistory(peer, Window::SectionShow::Way::Forward);
 	}, channel ? &st::menuIconChannel : &st::menuIconChatBubble);
+
+	if (const auto user = peer->asUser()) {
+		const auto canAddShadowban = groupPeer
+			&& (groupPeer->isChat() || groupPeer->isMegagroup())
+			&& !user->isInaccessible()
+			&& !user->isSelf()
+			&& !user->isRepliesChat()
+			&& !user->isVerifyCodes()
+			&& !user->session().settings().isShadowBanned(user->id);
+		if (canAddShadowban) {
+			addAction(tr::lng_shadowban_list_add(tr::now), [=] {
+				user->session().settings().addShadowBanned(user->id);
+				user->session().saveSettingsDelayed();
+			}, &st::menuIconBlock);
+		}
+	}
 
 	const auto username = peer->username();
 	const auto mention = !username.isEmpty() || peer->isUser();

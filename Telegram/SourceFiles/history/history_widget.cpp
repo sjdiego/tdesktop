@@ -1077,6 +1077,21 @@ HistoryWidget::HistoryWidget(
 			handleSupportSwitch(action.history);
 		}
 	}, lifetime());
+	session().settings().shadowBannedChanges(
+	) | rpl::on_next([=](PeerId) {
+		if (_history) {
+			_history->forceFullResize();
+			if (_migrated) {
+				_migrated->forceFullResize();
+			}
+			updateHistoryGeometry();
+			_history->sendActionPainter()->updateNeedsAnimating(
+				crl::now(),
+				true);
+			update();
+		}
+		refreshTopBarActiveChat();
+	}, lifetime());
 
 	_selfForwardsTagger = std::make_unique<HistoryView::SelfForwardsTagger>(
 		controller,

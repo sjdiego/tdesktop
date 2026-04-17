@@ -4411,6 +4411,10 @@ bool Message::hasOutLayout() const {
 	return item->out() && !item->isPost();
 }
 
+bool Message::isHidden() const {
+	return Element::isHidden() || ShouldHideByShadowban(data());
+}
+
 bool Message::drawBubble() const {
 	const auto item = data();
 	if (isHidden()) {

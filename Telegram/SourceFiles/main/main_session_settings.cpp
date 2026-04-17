@@ -71,6 +71,8 @@ QByteArray SessionSettings::serialize() const {
 	size += sizeof(qint32)
 		+ _subsectionTabsModes.size() * (sizeof(quint64) + sizeof(qint32));
 	size += sizeof(qint32); // _phoneNumberHidden
+	size += sizeof(qint32)
+		+ _shadowBannedUsers.size() * sizeof(quint64);
 
 	auto result = QByteArray();
 	result.reserve(size);
@@ -159,6 +161,10 @@ QByteArray SessionSettings::serialize() const {
 			stream << SerializePeerId(peerId) << qint32(mode);
 		}
 		stream << qint32(_phoneNumberHidden ? 1 : 0);
+		stream << qint32(_shadowBannedUsers.size());
+		for (const auto &peerId : _shadowBannedUsers) {
+			stream << SerializePeerId(peerId);
+		}
 	}
 
 	Ensures(result.size() == size);
@@ -234,6 +240,7 @@ void SessionSettings::addFromSerialized(const QByteArray &serialized) {
 	std::vector<int32> moderateCommonGroups;
 	qint32 disableSharingBoxShowsCount = 0;
 	qint32 phoneNumberHidden = 0;
+	base::flat_set<PeerId> shadowBannedUsers;
 
 	stream >> versionTag;
 	if (versionTag == kVersionTag) {
@@ -692,6 +699,26 @@ void SessionSettings::addFromSerialized(const QByteArray &serialized) {
 	if (!stream.atEnd()) {
 		stream >> phoneNumberHidden;
 	}
+	if (!stream.atEnd()) {
+		auto count = qint32(0);
+		stream >> count;
+		if ((stream.status() == QDataStream::Ok) && (count >= 0)) {
+			for (auto i = 0; i != count; ++i) {
+				auto peerId = quint64();
+				stream >> peerId;
+				if (stream.status() != QDataStream::Ok) {
+					LOG(("App Error: "
+						"Bad data for SessionSettings::addFromSerialized()"));
+					return;
+				}
+				shadowBannedUsers.emplace(DeserializePeerId(peerId));
+			}
+		} else if (count < 0) {
+			LOG(("App Error: "
+				"Bad data for SessionSettings::addFromSerialized()"));
+			return;
+		}
+	}
 	if (stream.status() != QDataStream::Ok) {
 		LOG(("App Error: "
 			"Bad data for SessionSettings::addFromSerialized()"));
@@ -758,6 +785,7 @@ void SessionSettings::addFromSerialized(const QByteArray &serialized) {
 	_moderateCommonGroups = std::move(moderateCommonGroups);
 	_disableSharingBoxShowsCount = disableSharingBoxShowsCount;
 	_phoneNumberHidden = (phoneNumberHidden == 1);
+	_shadowBannedUsers = std::move(shadowBannedUsers);
 
 	if (version < 2) {
 		app.setLastSeenWarningSeen(appLastSeenWarningSeen == 1);
@@ -804,6 +832,26 @@ void SessionSettings::addFromSerialized(const QByteArray &serialized) {
 		app.updateDialogsWidthRatio(appDialogsWidthRatio, false);
 		app.setThirdColumnWidth(appThirdColumnWidth);
 		app.setThirdSectionExtendedBy(appThirdSectionExtendedBy);
+	}
+}
+
+void SessionSettings::addShadowBanned(PeerId peerId) {
+	if (_shadowBannedUsers.emplace(peerId).second) {
+		_shadowBannedChanges.fire_copy(peerId);
+	}
+}
+
+void SessionSettings::removeShadowBanned(PeerId peerId) {
+	if (_shadowBannedUsers.remove(peerId)) {
+		_shadowBannedChanges.fire_copy(peerId);
+	}
+}
+
+void SessionSettings::toggleShadowBanned(PeerId peerId) {
+	if (isShadowBanned(peerId)) {
+		removeShadowBanned(peerId);
+	} else {
+		addShadowBanned(peerId);
 	}
 }
 

@@ -52,6 +52,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_session_controller.h"
 #include "window/window_peer_menu.h"
 #include "main/main_session.h"
+#include "main/main_session_settings.h"
 #include "ui/layers/generic_box.h"
 #include "ui/widgets/menu/menu_add_action_callback_factory.h"
 #include "ui/widgets/popup_menu.h"
@@ -511,6 +512,11 @@ ListWidget::ListWidget(
 		itemRemoved(item);
 	}, lifetime());
 
+	_session->settings().shadowBannedChanges(
+	) | rpl::on_next([=](PeerId) {
+		refreshRows(_slice);
+	}, lifetime());
+
 	using MessageUpdateFlag = Data::MessageUpdate::Flag;
 	_session->changes().realtimeMessageUpdates(
 		MessageUpdateFlag::NewUnreadReaction
@@ -672,6 +678,9 @@ void ListWidget::refreshRows(const Data::MessagesSlice &old) {
 	auto nearestIndex = -1;
 	for (const auto &fullId : _slice.ids) {
 		if (const auto item = session().data().message(fullId)) {
+			if (ShouldHideByShadowban(item)) {
+				continue;
+			}
 			if (_slice.nearestToAround == fullId) {
 				nearestIndex = int(_items.size());
 			}
@@ -688,7 +697,8 @@ void ListWidget::refreshRows(const Data::MessagesSlice &old) {
 	if (_translateTracker) {
 		_translateTracker->addBunchFrom(_items);
 	}
-	for (auto e = end(_items), i = e - addedToEndCount; i != e; ++i) {
+	const auto revealCount = std::min(addedToEndCount, int(_items.size()));
+	for (auto e = end(_items), i = e - revealCount; i != e; ++i) {
 		const auto item = (*i)->data();
 		if (!item->history()->streamedDrafts().hasFor(item)) {
 			_itemRevealPending.emplace(*i);
