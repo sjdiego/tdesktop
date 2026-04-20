@@ -261,16 +261,16 @@ void Histories::readInboxTill(
 	const auto syncGuard = gsl::finally([&] {
 		DEBUG_LOG(("Reading: in guard, unread %1."
 			).arg(history->unreadCount()));
-		if (history->unreadCount() > 0) {
-			if (const auto last = history->lastServerMessage()) {
-				DEBUG_LOG(("Reading: checking last %1 and %2."
-					).arg(last->id.bare
-					).arg(tillId.bare));
-				if (last->id == tillId) {
-					DEBUG_LOG(("Reading: locally marked as read."));
-					history->setUnreadCount(0);
-					history->updateChatListEntry();
-				}
+		if (const auto last = history->lastServerMessage()) {
+			DEBUG_LOG(("Reading: checking last %1 and %2."
+				).arg(last->id.bare
+				).arg(tillId.bare));
+			if (last->id == tillId
+				&& history->folderKnown()
+				&& (ghostMode || history->unreadCount() > 0)) {
+				DEBUG_LOG(("Reading: locally marked as read."));
+				history->setUnreadCount(0);
+				history->updateChatListEntry();
 			}
 		}
 	});

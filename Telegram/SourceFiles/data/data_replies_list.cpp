@@ -1027,7 +1027,7 @@ void RepliesList::sendReadTillRequest() {
 }
 
 void RepliesList::reloadUnreadCountIfNeeded() {
-	if (unreadCountKnown()) {
+	if (GhostModeAppliesTo(_history) || unreadCountKnown()) {
 		return;
 	} else if (inboxReadTillId() < computeInboxReadTillFull()) {
 		_readRequestTimer.callOnce(0);
