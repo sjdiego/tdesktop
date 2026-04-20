@@ -16,6 +16,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/send_files_box.h"
 #include "core/application.h"
 #include "core/core_settings.h"
+#include "data/data_peer.h"
 #include "data/components/promo_suggestions.h"
 
 namespace Main {
@@ -73,6 +74,7 @@ QByteArray SessionSettings::serialize() const {
 	size += sizeof(qint32); // _phoneNumberHidden
 	size += sizeof(qint32)
 		+ _shadowBannedUsers.size() * sizeof(quint64);
+	size += sizeof(qint32); // _ghostModeEnabled
 
 	auto result = QByteArray();
 	result.reserve(size);
@@ -165,6 +167,7 @@ QByteArray SessionSettings::serialize() const {
 		for (const auto &peerId : _shadowBannedUsers) {
 			stream << SerializePeerId(peerId);
 		}
+		stream << qint32(_ghostModeEnabled ? 1 : 0);
 	}
 
 	Ensures(result.size() == size);
@@ -241,6 +244,7 @@ void SessionSettings::addFromSerialized(const QByteArray &serialized) {
 	qint32 disableSharingBoxShowsCount = 0;
 	qint32 phoneNumberHidden = 0;
 	base::flat_set<PeerId> shadowBannedUsers;
+	qint32 ghostModeEnabled = 0;
 
 	stream >> versionTag;
 	if (versionTag == kVersionTag) {
@@ -719,6 +723,9 @@ void SessionSettings::addFromSerialized(const QByteArray &serialized) {
 			return;
 		}
 	}
+	if (!stream.atEnd()) {
+		stream >> ghostModeEnabled;
+	}
 	if (stream.status() != QDataStream::Ok) {
 		LOG(("App Error: "
 			"Bad data for SessionSettings::addFromSerialized()"));
@@ -786,6 +793,7 @@ void SessionSettings::addFromSerialized(const QByteArray &serialized) {
 	_disableSharingBoxShowsCount = disableSharingBoxShowsCount;
 	_phoneNumberHidden = (phoneNumberHidden == 1);
 	_shadowBannedUsers = std::move(shadowBannedUsers);
+	_ghostModeEnabled = (ghostModeEnabled == 1);
 
 	if (version < 2) {
 		app.setLastSeenWarningSeen(appLastSeenWarningSeen == 1);
@@ -855,6 +863,12 @@ void SessionSettings::toggleShadowBanned(PeerId peerId) {
 	} else {
 		addShadowBanned(peerId);
 	}
+}
+
+bool SessionSettings::ghostModeAppliesTo(PeerData *peer) const {
+	return _ghostModeEnabled
+		&& peer
+		&& (peer->isChat() || peer->isMegagroup());
 }
 
 void SessionSettings::setSupportChatsTimeSlice(int slice) {

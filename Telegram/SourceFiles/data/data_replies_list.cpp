@@ -11,6 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history_item.h"
 #include "history/history_item_helpers.h"
 #include "main/main_session.h"
+#include "main/main_session_settings.h"
 #include "data/data_histories.h"
 #include "data/data_session.h"
 #include "data/data_changes.h"
@@ -29,6 +30,10 @@ namespace {
 constexpr auto kMessagesPerPage = 50;
 constexpr auto kReadRequestTimeout = 3 * crl::time(1000);
 constexpr auto kMaxMessagesToDeleteMyTopic = 10;
+
+[[nodiscard]] bool GhostModeAppliesTo(not_null<History*> history) {
+	return history->session().settings().ghostModeAppliesTo(history->peer);
+}
 
 [[nodiscard]] HistoryItem *GenerateDivider(
 		not_null<History*> history,
@@ -972,6 +977,7 @@ void RepliesList::readTill(
 	if (!IsServerMsgId(tillId)) {
 		return;
 	}
+	const auto ghostMode = GhostModeAppliesTo(_history);
 	const auto was = computeInboxReadTillFull();
 	const auto now = tillId;
 	if (now < was) {
@@ -987,10 +993,12 @@ void RepliesList::readTill(
 				post->setCommentsInboxReadTill(now);
 			}
 		}
-		if (!_readRequestTimer.isActive()) {
-			_readRequestTimer.callOnce(fast ? 0 : kReadRequestTimeout);
-		} else if (fast && _readRequestTimer.remainingTime() > 0) {
-			_readRequestTimer.callOnce(0);
+		if (!ghostMode) {
+			if (!_readRequestTimer.isActive()) {
+				_readRequestTimer.callOnce(fast ? 0 : kReadRequestTimeout);
+			} else if (fast && _readRequestTimer.remainingTime() > 0) {
+				_readRequestTimer.callOnce(0);
+			}
 		}
 	}
 	if (const auto topic = _history->peer->forumTopicFor(_rootId)) {
@@ -1004,6 +1012,9 @@ void RepliesList::sendReadTillRequest() {
 	}
 	const auto api = &_history->session().api();
 	api->request(base::take(_readRequestId)).cancel();
+	if (GhostModeAppliesTo(_history)) {
+		return;
+	}
 
 	_readRequestId = api->request(MTPmessages_ReadDiscussion(
 		_history->peer->input(),

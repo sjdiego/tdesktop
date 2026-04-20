@@ -106,6 +106,11 @@ constexpr auto kDialogsFirstLoad = 20;
 constexpr auto kDialogsPerPage = 500;
 constexpr auto kStatsSessionKillTimeout = 10 * crl::time(1000);
 
+[[nodiscard]] bool GhostModeAppliesTo(not_null<HistoryItem*> item) {
+	return item->history()->session().settings().ghostModeAppliesTo(
+		item->history()->peer);
+}
+
 using PhotoFileLocationId = Data::PhotoFileLocationId;
 using DocumentFileLocationId = Data::DocumentFileLocationId;
 using UpdatedFileReferences = Data::UpdatedFileReferences;
@@ -1347,6 +1352,8 @@ void ApiWrap::markContentsRead(
 	for (const auto &item : items) {
 		if (!item->markContentsRead(true) || !item->isRegular()) {
 			continue;
+		} else if (GhostModeAppliesTo(item)) {
+			continue;
 		}
 		if (const auto channel = item->history()->peer->asChannel()) {
 			channelMarkedIds[channel].push_back(MTP_int(item->id));
@@ -1371,6 +1378,8 @@ void ApiWrap::markContentsRead(
 
 void ApiWrap::markContentsRead(not_null<HistoryItem*> item) {
 	if (!item->markContentsRead(true) || !item->isRegular()) {
+		return;
+	} else if (GhostModeAppliesTo(item)) {
 		return;
 	}
 	const auto ids = MTP_vector<MTPint>(1, MTP_int(item->id));

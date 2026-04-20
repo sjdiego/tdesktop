@@ -24,6 +24,8 @@ namespace Data {
 enum class SetupEmailState;
 } // namespace Data
 
+class PeerData;
+
 namespace Main {
 
 class SessionSettings final {
@@ -109,6 +111,13 @@ public:
 	[[nodiscard]] rpl::producer<PeerId> shadowBannedChanges() const {
 		return _shadowBannedChanges.events();
 	}
+	void setGhostModeEnabled(bool enabled) {
+		_ghostModeEnabled = enabled;
+	}
+	[[nodiscard]] bool ghostModeEnabled() const {
+		return _ghostModeEnabled;
+	}
+	[[nodiscard]] bool ghostModeAppliesTo(PeerData *peer) const;
 
 	[[nodiscard]] Data::AutoDownload::Full &autoDownload() {
 		return _autoDownload;
@@ -265,6 +274,7 @@ private:
 	std::vector<int32> _moderateCommonGroups;
 
 	bool _phoneNumberHidden = false;
+	bool _ghostModeEnabled = false;
 
 	uint32 _shadowBannedVersion = 1;
 	rpl::event_stream<PeerId> _shadowBannedChanges;
