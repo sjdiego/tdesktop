@@ -23,6 +23,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/unixtime.h"
 #include "base/random.h"
 #include "main/main_session.h"
+#include "main/main_session_settings.h"
 #include "window/notifications_manager.h"
 #include "history/history.h"
 #include "history/history_item.h"
@@ -36,6 +37,10 @@ namespace {
 
 constexpr auto kReadRequestTimeout = 3 * crl::time(1000);
 constexpr auto kReportDeliveriesPerRequest = 50;
+
+[[nodiscard]] bool GhostModeAppliesTo(not_null<History*> history) {
+	return history->session().settings().ghostModeAppliesTo(history->peer);
+}
 
 } // namespace
 
@@ -247,6 +252,7 @@ void Histories::readInboxTill(
 		MsgId tillId,
 		bool force) {
 	Expects(IsServerMsgId(tillId) || (!tillId && !force));
+	const auto ghostMode = GhostModeAppliesTo(history);
 
 	DEBUG_LOG(("Reading: readInboxTill %1, force %2."
 		).arg(tillId.bare
@@ -255,16 +261,16 @@ void Histories::readInboxTill(
 	const auto syncGuard = gsl::finally([&] {
 		DEBUG_LOG(("Reading: in guard, unread %1."
 			).arg(history->unreadCount()));
-		if (history->unreadCount() > 0) {
-			if (const auto last = history->lastServerMessage()) {
-				DEBUG_LOG(("Reading: checking last %1 and %2."
-					).arg(last->id.bare
-					).arg(tillId.bare));
-				if (last->id == tillId) {
-					DEBUG_LOG(("Reading: locally marked as read."));
-					history->setUnreadCount(0);
-					history->updateChatListEntry();
-				}
+		if (const auto last = history->lastServerMessage()) {
+			DEBUG_LOG(("Reading: checking last %1 and %2."
+				).arg(last->id.bare
+				).arg(tillId.bare));
+			if (last->id == tillId
+				&& history->folderKnown()
+				&& (ghostMode || history->unreadCount() > 0)) {
+				DEBUG_LOG(("Reading: locally marked as read."));
+				history->setUnreadCount(0);
+				history->updateChatListEntry();
 			}
 		}
 	});
@@ -308,7 +314,12 @@ void Histories::readInboxTill(
 	}
 	auto &state = maybeState ? *maybeState : _states[history];
 	state.willReadTill = tillId;
-	if (force || !stillUnread || !*stillUnread) {
+	if (ghostMode) {
+		state.willReadTill = 0;
+		state.willReadWhen = 0;
+		state.sentReadTill = 0;
+		state.sentReadDone = true;
+	} else if (force || !stillUnread || !*stillUnread) {
 		DEBUG_LOG(("Reading: will read till %1 with still unread %2"
 			).arg(tillId.bare
 			).arg(stillUnread.value_or(-666)));
@@ -330,10 +341,13 @@ void Histories::readInboxTill(
 	}
 	DEBUG_LOG(("Reading: marking now with till %1 and still %2"
 		).arg(tillId.bare
-		).arg(*stillUnread));
+		).arg(stillUnread.value_or(-666)));
 	history->setInboxReadTill(tillId);
-	history->setUnreadCount(*stillUnread);
-	history->updateChatListEntry();
+	if (stillUnread) {
+		history->setUnreadCount(*stillUnread);
+		history->updateChatListEntry();
+	}
+	checkEmptyState(history);
 }
 
 void Histories::readInboxOnNewMessage(not_null<HistoryItem*> item) {
@@ -605,6 +619,14 @@ void Histories::requestGroupAround(not_null<HistoryItem*> item) {
 }
 
 void Histories::sendPendingReadInbox(not_null<History*> history) {
+	if (GhostModeAppliesTo(history)) {
+		if (const auto state = lookup(history)) {
+			state->willReadTill = 0;
+			state->willReadWhen = 0;
+			checkEmptyState(history);
+		}
+		return;
+	}
 	if (const auto state = lookup(history)) {
 		DEBUG_LOG(("Reading: send pending now with till %1 and when %2"
 			).arg(state->willReadTill.bare
@@ -678,6 +700,10 @@ void Histories::sendReadRequests() {
 	for (auto &[history, state] : _states) {
 		if (!state.willReadTill) {
 			DEBUG_LOG(("Reading: skipping zero till."));
+			continue;
+		} else if (GhostModeAppliesTo(history)) {
+			state.willReadTill = 0;
+			state.willReadWhen = 0;
 			continue;
 		} else if (state.willReadWhen <= now) {
 			DEBUG_LOG(("Reading: sending with till %1."

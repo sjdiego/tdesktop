@@ -744,6 +744,17 @@ void MainMenu::setupMenu() {
 		controller->showSettings();
 	});
 
+	addAction(
+		tr::lng_menu_ghost_mode(),
+		{ &st::menuIconStealth }
+	)->toggleOn(rpl::single(
+		controller->session().settings().ghostModeEnabled()
+	))->toggledChanges(
+	) | rpl::on_next([=](bool enabled) {
+		controller->session().settings().setGhostModeEnabled(enabled);
+		controller->session().saveSettingsDelayed();
+	}, _menu->lifetime());
+
 	_nightThemeToggle = addAction(
 		tr::lng_menu_night_mode(),
 		{ &st::menuIconNightMode }
