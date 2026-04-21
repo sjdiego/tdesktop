@@ -17,6 +17,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history_item_components.h"
 #include "main/main_session.h"
 #include "main/main_app_config.h"
+#include "main/main_session_settings.h"
 #include "main/session/send_as_peers.h"
 #include "data/components/credits.h"
 #include "data/data_channel.h"
@@ -1934,6 +1935,63 @@ MessageReactions::~MessageReactions() {
 	}
 }
 
+void MessageReactions::incrementVersion() {
+	++_version;
+}
+
+void MessageReactions::refreshFiltered() const {
+	const auto &settings = _item->history()->session().settings();
+	const auto shadowbanVersion = settings.shadowBannedVersion();
+	if ((_filteredVersion == _version)
+		&& (_filteredShadowbanVersion == shadowbanVersion)) {
+		return;
+	}
+	_filteredVersion = _version;
+	_filteredShadowbanVersion = shadowbanVersion;
+	if (!settings.shadowBannedCount()) {
+		_filteredList = _list;
+		_filteredRecent = _recent;
+		return;
+	}
+
+	_filteredRecent.clear();
+	for (const auto &[id, list] : _recent) {
+		auto filtered = std::vector<RecentReaction>();
+		filtered.reserve(list.size());
+		for (const auto &reaction : list) {
+			if (!settings.isShadowBanned(reaction.peer->id)) {
+				filtered.push_back(reaction);
+			}
+		}
+		if (!filtered.empty()) {
+			_filteredRecent.emplace(id, std::move(filtered));
+		}
+	}
+
+	const auto peer = _item->history()->peer->asUser();
+	const auto hideDialogPeer = peer && settings.isShadowBanned(peer->id);
+	_filteredList.clear();
+	_filteredList.reserve(_list.size());
+	for (const auto &reaction : _list) {
+		auto count = reaction.count;
+		if (hideDialogPeer) {
+			if (!reaction.my || (count > 1)) {
+				--count;
+			}
+		} else if (const auto i = _recent.find(reaction.id); i != end(_recent)) {
+			count -= ranges::count_if(i->second, [&](const RecentReaction &entry) {
+				return settings.isShadowBanned(entry.peer->id);
+			});
+		}
+		if (count <= 0) {
+			continue;
+		}
+		auto filtered = reaction;
+		filtered.count = count;
+		_filteredList.push_back(filtered);
+	}
+}
+
 void MessageReactions::add(const ReactionId &id, bool addToRecent) {
 	Expects(!id.empty());
 	Expects(!id.paid());
@@ -1997,6 +2055,7 @@ void MessageReactions::add(const ReactionId &id, bool addToRecent) {
 		_list.push_back({ .id = id, .count = 1, .my = true });
 	}
 	auto &owner = history->owner();
+	incrementVersion();
 	owner.reactions().send(_item, addToRecent);
 	owner.notifyItemDataChange(_item);
 }
@@ -2040,6 +2099,7 @@ void MessageReactions::remove(const ReactionId &id) {
 		history->owner().reactions().decrementMyTag(id, sublist);
 	}
 	auto &owner = history->owner();
+	incrementVersion();
 	owner.reactions().send(_item, false);
 	owner.notifyItemDataChange(_item);
 }
@@ -2201,6 +2261,7 @@ bool MessageReactions::change(
 		_recent = std::move(parsed);
 		changed = true;
 	}
+	const auto listChanged = changed;
 
 	auto paidTop = std::vector<TopPaid>();
 	const auto &paindTopNow = _paid ? _paid->top : std::vector<TopPaid>();
@@ -2252,16 +2313,21 @@ bool MessageReactions::change(
 			changed = true;
 		}
 	}
+	if (listChanged) {
+		incrementVersion();
+	}
 	return changed;
 }
 
 const std::vector<MessageReaction> &MessageReactions::list() const {
-	return _list;
+	refreshFiltered();
+	return _filteredList;
 }
 
 auto MessageReactions::recent() const
 -> const base::flat_map<ReactionId, std::vector<RecentReaction>> & {
-	return _recent;
+	refreshFiltered();
+	return _filteredRecent;
 }
 
 auto MessageReactions::topPaid() const -> const std::vector<TopPaid> & {
@@ -2288,6 +2354,7 @@ void MessageReactions::markRead() {
 			reaction.unread = false;
 		}
 	}
+	incrementVersion();
 }
 
 void MessageReactions::scheduleSendPaid(
@@ -2420,6 +2487,7 @@ bool MessageReactions::clearCloudData() {
 	const auto result = !_list.empty();
 	_recent.clear();
 	_list.clear();
+	incrementVersion();
 	if (localPaidData()) {
 		_paid->top.clear();
 	} else {
