@@ -13,6 +13,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/view/history_view_element.h"
 #include "history/view/media/history_view_sticker.h"
 #include "main/main_session.h"
+#include "main/main_session_settings.h"
 #include "data/data_session.h"
 #include "data/data_changes.h"
 #include "data/data_peer.h"
@@ -266,6 +267,10 @@ void EmojiInteractions::sendAccumulatedOutgoing(
 	const auto till = ranges::find_if(animations, [&](const auto &animation) {
 		return !animation.startedAt || (animation.startedAt >= intervalEnd);
 	});
+	if (_session->settings().ghostModeEnabled()) {
+		animations.erase(from, till);
+		return;
+	}
 	auto bunch = EmojiInteractionsBunch();
 	bunch.interactions.reserve(till - from);
 	for (const auto &animation : ranges::make_subrange(from, till)) {
@@ -422,6 +427,9 @@ void EmojiInteractions::playStarted(not_null<PeerData*> peer, QString emoji) {
 	const auto i = map.find(emoji);
 	const auto now = crl::now();
 	if (i != end(map) && now - i->second < kAccumulateSeenRequests) {
+		return;
+	}
+	if (_session->settings().ghostModeEnabled()) {
 		return;
 	}
 	_session->api().request(MTPmessages_SetTyping(
