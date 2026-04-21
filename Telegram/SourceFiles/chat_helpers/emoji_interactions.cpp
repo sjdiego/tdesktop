@@ -432,9 +432,6 @@ void EmojiInteractions::playStarted(not_null<PeerData*> peer, QString emoji) {
 	if (i != end(map) && now - i->second < kAccumulateSeenRequests) {
 		return;
 	}
-	if (_session->settings().ghostModeEnabled()) {
-		return;
-	}
 	_session->api().request(MTPmessages_SetTyping(
 		MTP_flags(0),
 		peer->input(),
