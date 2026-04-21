@@ -3292,6 +3292,12 @@ auto HistoryItem::topPaidReactionsWithLocal() const
 	} else if (i != end(result)) {
 		i->peer = peerForMine();
 	}
+	const auto &settings = history()->session().settings();
+	if (settings.shadowBannedCount()) {
+		result.erase(ranges::remove_if(result, [&](const TopPaid &entry) {
+			return entry.peer && settings.isShadowBanned(entry.peer->id);
+		}), end(result));
+	}
 	return result;
 }
 

@@ -20,6 +20,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/stickers/data_custom_emoji.h"
 #include "data/data_message_reaction_id.h"
 #include "main/main_session.h"
+#include "main/main_session_settings.h"
 #include "data/data_session.h"
 #include "data/data_peer.h"
 #include "lang/lang_keys.h"
@@ -419,6 +420,9 @@ void Controller::rowClicked(not_null<PeerListRow*> row) {
 }
 
 bool Controller::appendRow(not_null<PeerData*> peer, ReactionId reaction) {
+	if (peer->session().settings().isShadowBanned(peer->id)) {
+		return false;
+	}
 	if (delegate()->peerListFindRow(id(peer, reaction))) {
 		return false;
 	}

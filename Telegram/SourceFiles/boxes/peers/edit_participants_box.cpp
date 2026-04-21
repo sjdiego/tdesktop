@@ -17,6 +17,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/max_invite_box.h"
 #include "boxes/add_contact_box.h"
 #include "main/main_session.h"
+#include "main/main_session_settings.h"
 #include "menu/menu_antispam_validator.h"
 #include "mtproto/mtproto_config.h"
 #include "apiwrap.h"
@@ -2294,6 +2295,9 @@ std::unique_ptr<PeerListRow> ParticipantsBoxController::createRow(
 		not_null<PeerData*> participant) const {
 	if (_role == Role::Profile) {
 		Assert(participant->asUser() != nullptr);
+		if (participant->session().settings().isShadowBanned(participant->id)) {
+			return nullptr;
+		}
 	}
 	auto row = std::make_unique<Row>(participant, computeType(participant));
 	refreshCustomStatus(row.get());

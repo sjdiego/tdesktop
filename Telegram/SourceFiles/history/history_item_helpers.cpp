@@ -73,7 +73,13 @@ bool PeerCallKnown(not_null<PeerData*> peer) {
 		&& session->settings().isShadowBanned(peer->id);
 }
 
-[[nodiscard]] bool HasShadowBannedMention(
+enum class ShadowBannedMentionCheck {
+	No,
+	Yes,
+	Unresolved,
+};
+
+[[nodiscard]] ShadowBannedMentionCheck HasShadowBannedMention(
 		not_null<const HistoryItem*> item,
 		const EntityInText &entity) {
 	const auto &text = item->originalText().text;
@@ -82,9 +88,11 @@ bool PeerCallKnown(not_null<PeerData*> peer) {
 	case EntityType::MentionName: {
 		const auto fields = TextUtilities::MentionNameDataToFields(
 			entity.data());
-		return fields.userId
+		return (fields.userId
 			&& session.settings().isShadowBanned(
-				peerFromUser(UserId(fields.userId)));
+				peerFromUser(UserId(fields.userId))))
+			? ShadowBannedMentionCheck::Yes
+			: ShadowBannedMentionCheck::No;
 	}
 	case EntityType::Mention: {
 		const auto offset = entity.offset();
@@ -92,18 +100,34 @@ bool PeerCallKnown(not_null<PeerData*> peer) {
 		if ((offset < 0)
 			|| (length <= 1)
 			|| (offset + length > text.size())) {
-			return false;
+			return ShadowBannedMentionCheck::No;
 		}
 		const auto mention = text.mid(offset, length);
 		if (!mention.startsWith('@')) {
-			return false;
+			return ShadowBannedMentionCheck::No;
 		}
-		const auto resolved = session.data().peerByUsername(mention.mid(1));
-		return resolved
-			&& resolved->isUser()
-			&& session.settings().isShadowBanned(resolved->id);
+		const auto username = mention.mid(1).trimmed();
+		if (username.isEmpty()) {
+			return ShadowBannedMentionCheck::No;
+		}
+		auto unresolved = false;
+		for (const auto peerId : session.settings().shadowBannedUsers()) {
+			if (!peerIsUser(peerId)) {
+				continue;
+			}
+			const auto peer = session.data().peerLoaded(peerId);
+			if (!peer) {
+				unresolved = true;
+				continue;
+			} else if (!peer->username().compare(username, Qt::CaseInsensitive)) {
+				return ShadowBannedMentionCheck::Yes;
+			}
+		}
+		return unresolved
+			? ShadowBannedMentionCheck::Unresolved
+			: ShadowBannedMentionCheck::No;
 	}
-	default: return false;
+	default: return ShadowBannedMentionCheck::No;
 	}
 }
 
@@ -772,6 +796,7 @@ bool ShouldHideByShadowban(not_null<const HistoryItem*> item) {
 		item->cacheShadowbanHidden(version, false);
 		return false;
 	}
+	auto unresolvedMention = false;
 	const auto hidden = IsShadowBannedPeer(&session, item->from())
 		|| IsShadowBannedPeer(&session, item->originalSender())
 		|| IsShadowBannedPeer(&session, item->savedFromSender())
@@ -791,9 +816,20 @@ bool ShouldHideByShadowban(not_null<const HistoryItem*> item) {
 			return false;
 		}()
 		|| ranges::any_of(item->originalText().entities, [&](const auto &entity) {
-			return HasShadowBannedMention(item, entity);
+			switch (HasShadowBannedMention(item, entity)) {
+			case ShadowBannedMentionCheck::Yes:
+				return true;
+			case ShadowBannedMentionCheck::Unresolved:
+				unresolvedMention = true;
+				return false;
+			case ShadowBannedMentionCheck::No:
+				return false;
+			}
+			Unexpected("ShadowBannedMentionCheck value.");
 		});
-	item->cacheShadowbanHidden(version, hidden);
+	if (hidden || !unresolvedMention) {
+		item->cacheShadowbanHidden(version, hidden);
+	}
 	return hidden;
 }
 

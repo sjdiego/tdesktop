@@ -591,9 +591,7 @@ void ShadowbanListController::prepare() {
 	delegate()->peerListSetTitle(tr::lng_shadowban_list_title());
 	setDescriptionText(tr::lng_shadowban_list_about(tr::now));
 	for (const auto &peerId : session().settings().shadowBannedUsers()) {
-		if (const auto peer = session().data().peerLoaded(peerId)) {
-			appendRow(peer);
-		}
+		appendRow(session().data().peer(peerId));
 	}
 	delegate()->peerListRefreshRows();
 
@@ -640,11 +638,9 @@ void ShadowbanListController::AddNewPeer(
 
 void ShadowbanListController::handleShadowbanChange(PeerId peerId) {
 	if (session().settings().isShadowBanned(peerId)) {
-		if (const auto peer = session().data().peerLoaded(peerId)) {
-			if (prependRow(peer)) {
-				delegate()->peerListRefreshRows();
-				delegate()->peerListScrollToTop();
-			}
+		if (prependRow(session().data().peer(peerId))) {
+			delegate()->peerListRefreshRows();
+			delegate()->peerListScrollToTop();
 		}
 	} else if (auto row = delegate()->peerListFindRow(peerId.value)) {
 		delegate()->peerListRemoveRow(row);
