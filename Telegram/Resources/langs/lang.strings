@@ -11,6 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_menu_contacts" = "Contacts";
 "lng_menu_calls" = "Calls";
 "lng_menu_settings" = "Settings";
+"lng_menu_ghost_mode" = "Ghost Mode";
 "lng_menu_about" = "About";
 "lng_menu_update" = "Update";
 "lng_menu_night_mode" = "Night Mode";
@@ -7928,5 +7929,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_mac_touchbar_favorite_stickers" = "Favorite stickers";
 
 "lng_mac_hold_to_quit" = "Hold {text} to Quit";
+
+"lng_sr_country_column_name" = "Country name";
 
 // Keys finished
