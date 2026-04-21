@@ -106,14 +106,25 @@ enum class ShadowBannedMentionCheck {
 		if (!mention.startsWith('@')) {
 			return ShadowBannedMentionCheck::No;
 		}
-		const auto resolved = session.data().peerByUsername(mention.mid(1));
-		if (!resolved) {
-			return ShadowBannedMentionCheck::Unresolved;
+		const auto username = mention.mid(1).trimmed();
+		if (username.isEmpty()) {
+			return ShadowBannedMentionCheck::No;
 		}
-		return (resolved
-			&& resolved->isUser()
-			&& session.settings().isShadowBanned(resolved->id))
-			? ShadowBannedMentionCheck::Yes
+		auto unresolved = false;
+		for (const auto peerId : session.settings().shadowBannedUsers()) {
+			if (!peerIsUser(peerId)) {
+				continue;
+			}
+			const auto peer = session.data().peerLoaded(peerId);
+			if (!peer) {
+				unresolved = true;
+				continue;
+			} else if (!peer->username().compare(username, Qt::CaseInsensitive)) {
+				return ShadowBannedMentionCheck::Yes;
+			}
+		}
+		return unresolved
+			? ShadowBannedMentionCheck::Unresolved
 			: ShadowBannedMentionCheck::No;
 	}
 	default: return ShadowBannedMentionCheck::No;

@@ -1941,6 +1941,9 @@ void MessageReactions::incrementVersion() {
 
 void MessageReactions::refreshFiltered() const {
 	const auto &settings = _item->history()->session().settings();
+	if (!settings.shadowBannedCount()) {
+		return;
+	}
 	const auto shadowbanVersion = settings.shadowBannedVersion();
 	if ((_filteredVersion == _version)
 		&& (_filteredShadowbanVersion == shadowbanVersion)) {
@@ -1948,12 +1951,6 @@ void MessageReactions::refreshFiltered() const {
 	}
 	_filteredVersion = _version;
 	_filteredShadowbanVersion = shadowbanVersion;
-	if (!settings.shadowBannedCount()) {
-		_filteredList = _list;
-		_filteredRecent = _recent;
-		return;
-	}
-
 	_filteredRecent.clear();
 	for (const auto &[id, list] : _recent) {
 		auto filtered = std::vector<RecentReaction>();
@@ -2320,12 +2317,18 @@ bool MessageReactions::change(
 }
 
 const std::vector<MessageReaction> &MessageReactions::list() const {
+	if (!_item->history()->session().settings().shadowBannedCount()) {
+		return _list;
+	}
 	refreshFiltered();
 	return _filteredList;
 }
 
 auto MessageReactions::recent() const
 -> const base::flat_map<ReactionId, std::vector<RecentReaction>> & {
+	if (!_item->history()->session().settings().shadowBannedCount()) {
+		return _recent;
+	}
 	refreshFiltered();
 	return _filteredRecent;
 }
