@@ -279,9 +279,6 @@ private:
 	uint32 _shadowBannedVersion = 1;
 	rpl::event_stream<PeerId> _shadowBannedChanges;
 
-	uint32 _shadowBannedVersion = 1;
-	rpl::event_stream<PeerId> _shadowBannedChanges;
-
 };
 
 } // namespace Main
