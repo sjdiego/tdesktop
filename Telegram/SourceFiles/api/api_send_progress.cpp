@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "api/api_send_progress.h"
 
 #include "main/main_session.h"
+#include "main/main_session_settings.h"
 #include "history/history.h"
 #include "data/data_peer.h"
 #include "data/data_user.h"
@@ -71,9 +72,18 @@ void SendProgressManager::update(
 			&& type != SendProgressType::Speaking)) {
 		return;
 	}
+	if (_session->settings().ghostModeEnabled()) {
+		return;
+	}
 
 	const auto doing = (progress >= 0);
 	const auto key = Key{ history, topMsgId, type };
+	if (_session->settings().ghostModeEnabled()) {
+		if (updated(key, doing)) {
+			cancel(history, topMsgId, type);
+		}
+		return;
+	}
 	if (updated(key, doing)) {
 		cancel(history, topMsgId, type);
 		if (doing) {

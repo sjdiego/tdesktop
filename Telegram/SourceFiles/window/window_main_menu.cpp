@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "window/window_main_menu.h"
 
+#include "api/api_updates.h"
 #include "apiwrap.h"
 #include "base/event_filter.h"
 #include "base/qt_signal_producer.h"
@@ -753,6 +754,7 @@ void MainMenu::setupMenu() {
 	) | rpl::on_next([=](bool enabled) {
 		controller->session().settings().setGhostModeEnabled(enabled);
 		controller->session().saveSettingsDelayed();
+		controller->session().updates().updateOnline();
 	}, _menu->lifetime());
 
 	_nightThemeToggle = addAction(
