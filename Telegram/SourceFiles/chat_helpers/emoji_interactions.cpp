@@ -267,7 +267,8 @@ void EmojiInteractions::sendAccumulatedOutgoing(
 	const auto till = ranges::find_if(animations, [&](const auto &animation) {
 		return !animation.startedAt || (animation.startedAt >= intervalEnd);
 	});
-	if (_session->settings().ghostModeEnabled()) {
+	const auto peer = item->history()->peer;
+	if (_session->settings().ghostModeAppliesTo(peer)) {
 		animations.erase(from, till);
 		return;
 	}
@@ -282,7 +283,6 @@ void EmojiInteractions::sendAccumulatedOutgoing(
 	if (bunch.interactions.empty()) {
 		return;
 	}
-	const auto peer = item->history()->peer;
 	const auto emoji = from->emoji;
 	const auto requestId = _session->api().request(MTPmessages_SetTyping(
 		MTP_flags(0),
@@ -432,7 +432,7 @@ void EmojiInteractions::playStarted(not_null<PeerData*> peer, QString emoji) {
 	if (i != end(map) && now - i->second < kAccumulateSeenRequests) {
 		return;
 	}
-	if (_session->settings().ghostModeEnabled()) {
+	if (_session->settings().ghostModeAppliesTo(peer)) {
 		return;
 	}
 	_session->api().request(MTPmessages_SetTyping(
