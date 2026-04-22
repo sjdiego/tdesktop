@@ -72,13 +72,9 @@ void SendProgressManager::update(
 			&& type != SendProgressType::Speaking)) {
 		return;
 	}
-	if (_session->settings().ghostModeEnabled()) {
-		return;
-	}
-
 	const auto doing = (progress >= 0);
 	const auto key = Key{ history, topMsgId, type };
-	if (_session->settings().ghostModeEnabled()) {
+	if (_session->settings().ghostModeAppliesTo(peer)) {
 		if (updated(key, doing)) {
 			cancel(history, topMsgId, type);
 		}
