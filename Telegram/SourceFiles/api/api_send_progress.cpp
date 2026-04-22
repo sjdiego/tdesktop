@@ -78,6 +78,12 @@ void SendProgressManager::update(
 
 	const auto doing = (progress >= 0);
 	const auto key = Key{ history, topMsgId, type };
+	if (_session->settings().ghostModeEnabled()) {
+		if (updated(key, doing)) {
+			cancel(history, topMsgId, type);
+		}
+		return;
+	}
 	if (updated(key, doing)) {
 		cancel(history, topMsgId, type);
 		if (doing) {

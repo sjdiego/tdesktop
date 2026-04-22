@@ -2528,12 +2528,17 @@ void HistoryItem::addToUnreadThings(HistoryUnreadThings::AddType type) {
 	const auto history = this->history();
 	const auto changes = &history->session().changes();
 	if (mention) {
-		if (history->unreadMentions().add(id, type)) {
+		const auto restoreHistoryMention = (type == HistoryUnreadThings::AddType::New)
+			|| (history->unreadMentions().count() != 0);
+		if (restoreHistoryMention && history->unreadMentions().add(id, type)) {
 			changes->historyUpdated(
 				history,
 				Data::HistoryUpdate::Flag::UnreadMentions);
 		}
-		if (topic && topic->unreadMentions().add(id, type)) {
+		const auto restoreTopicMention = topic
+			&& ((type == HistoryUnreadThings::AddType::New)
+				|| (topic->unreadMentions().count() != 0));
+		if (restoreTopicMention && topic->unreadMentions().add(id, type)) {
 			changes->topicUpdated(
 				topic,
 				Data::TopicUpdate::Flag::UnreadMentions);
