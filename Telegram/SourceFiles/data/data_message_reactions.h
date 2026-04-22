@@ -452,7 +452,16 @@ private:
 
 	std::vector<MessageReaction> _list;
 	base::flat_map<ReactionId, std::vector<RecentReaction>> _recent;
+	mutable std::vector<MessageReaction> _filteredList;
+	mutable base::flat_map<ReactionId, std::vector<RecentReaction>>
+		_filteredRecent;
+	uint32 _version = 1;
+	mutable uint32 _filteredVersion = 0;
+	mutable uint32 _filteredShadowbanVersion = 0;
 	std::unique_ptr<Paid> _paid;
+
+	void incrementVersion();
+	void refreshFiltered() const;
 
 };
 

@@ -24,6 +24,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "lang/lang_keys.h"
 #include "main/main_app_config.h"
 #include "main/main_session.h"
+#include "main/main_session_settings.h"
 #include "base/unixtime.h"
 #include "base/weak_ptr.h"
 #include "ui/controls/who_reacted_context_action.h"
@@ -70,8 +71,10 @@ struct PeersWithReactions {
 
 struct CachedRead {
 	CachedRead()
-	: data(Peers{ .state = WhoReadState::Unknown }) {
+	: raw(Peers{ .state = WhoReadState::Unknown })
+	, data(Peers{ .state = WhoReadState::Unknown }) {
 	}
+	Peers raw;
 	rpl::variable<Peers> data;
 	mtpRequestId requestId = 0;
 };
@@ -127,6 +130,10 @@ struct State {
 	bool someUserpicsNotLoaded = false;
 	bool scheduled = false;
 };
+
+[[nodiscard]] Peers FilterShadowBanned(
+		Peers peers,
+		not_null<Main::Session*> session);
 
 [[nodiscard]] auto Contexts()
 -> base::flat_map<not_null<QWidget*>, std::unique_ptr<Context>> & {
@@ -195,6 +202,7 @@ struct State {
 	) | rpl::on_next([=] {
 		for (auto &[item, cache] : context->cachedRead) {
 			if (cache.data.current().state == Ui::WhoReadState::MyHidden) {
+				cache.raw = Peers{ .state = Ui::WhoReadState::Unknown };
 				cache.data = Peers{ .state = Ui::WhoReadState::Unknown };
 			}
 		}
@@ -205,8 +213,15 @@ struct State {
 	) | rpl::on_next([=] {
 		for (auto &[item, cache] : context->cachedRead) {
 			if (cache.data.current().state == Ui::WhoReadState::MyHidden) {
+				cache.raw = Peers{ .state = Ui::WhoReadState::Unknown };
 				cache.data = Peers{ .state = Ui::WhoReadState::Unknown };
 			}
+		}
+	}, context->subscriptions[session]);
+	session->settings().shadowBannedChanges(
+	) | rpl::on_next([=](PeerId) {
+		for (auto &[item, cache] : context->cachedRead) {
+			cache.data = FilterShadowBanned(cache.raw, session);
 		}
 	}, context->subscriptions[session]);
 	return context;
@@ -237,6 +252,20 @@ struct State {
 	return Ui::WhoReadType::Seen;
 }
 
+[[nodiscard]] Peers FilterShadowBanned(
+		Peers peers,
+		not_null<Main::Session*> session) {
+	if (!session->settings().shadowBannedCount() || peers.list.empty()) {
+		return peers;
+	}
+	peers.list.erase(
+		ranges::remove_if(peers.list, [&](const WhoReadPeer &peer) {
+			return session->settings().isShadowBanned(peer.peer);
+		}),
+		end(peers.list));
+	return peers;
+}
+
 [[nodiscard]] rpl::producer<Peers> WhoReadIds(
 		not_null<HistoryItem*> item,
 		not_null<QWidget*> context) {
@@ -264,19 +293,21 @@ struct State {
 					.peer = user->id,
 					.date = data.vdate().v,
 				});
-				entry.data = std::move(parsed);
+				entry.raw = parsed;
+				entry.data = FilterShadowBanned(std::move(parsed), session);
 			}).fail([=](const MTP::Error &error) {
 				auto &entry = context->cacheRead(item);
 				entry.requestId = 0;
 				if (entry.data.current().state == WhoReadState::Unknown) {
 					const auto &text = error.type();
-					entry.data = (text == u"YOUR_PRIVACY_RESTRICTED"_q)
+					entry.raw = (text == u"YOUR_PRIVACY_RESTRICTED"_q)
 						? Peers{ .state = WhoReadState::MyHidden }
 						: (text == u"USER_PRIVACY_RESTRICTED"_q)
 						? Peers{ .state = WhoReadState::HisHidden }
 						: (text == u"MESSAGE_TOO_OLD"_q)
 						? Peers{ .state = WhoReadState::TooOld }
 						: Peers{ .state = WhoReadState::Empty };
+					entry.data = entry.raw;
 				}
 			}).send();
 		} else {
@@ -296,12 +327,14 @@ struct State {
 						.date = id.data().vdate().v,
 					});
 				}
-				entry.data = std::move(parsed);
+				entry.raw = parsed;
+				entry.data = FilterShadowBanned(std::move(parsed), session);
 			}).fail([=] {
 				auto &entry = context->cacheRead(item);
 				entry.requestId = 0;
 				if (entry.data.current().state == WhoReadState::Unknown) {
-					entry.data = Peers{ .state = WhoReadState::Empty };
+					entry.raw = Peers{ .state = WhoReadState::Empty };
+					entry.data = entry.raw;
 				}
 			}).send();
 		}
@@ -361,9 +394,14 @@ struct State {
 					parsed.list.reserve(data.vreactions().v.size());
 					for (const auto &vote : data.vreactions().v) {
 						const auto &data = vote.data();
+						const auto peerId = peerFromMTP(data.vpeer_id());
+						if (session->settings().isShadowBanned(peerId)) {
+							--parsed.fullReactionsCount;
+							continue;
+						}
 						parsed.list.push_back(PeerWithReaction{
 							.peerWithDate = {
-								.peer = peerFromMTP(data.vpeer_id()),
+								.peer = peerId,
 								.date = data.vdate().v,
 								.dateReacted = true,
 							},
